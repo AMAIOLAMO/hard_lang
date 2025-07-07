@@ -25,6 +25,14 @@ tok_stream_next :: proc(p_tstream: ^TokenStream) -> ^Token {
     return &p_tstream.tokens[p_tstream.read_idx]
 }
 
+tok_stream_peek :: proc(p_tstream: ^TokenStream) -> ^Token {
+    if (p_tstream.read_idx + 1) >= len(p_tstream.tokens) {
+        return nil
+    }
+
+    return &p_tstream.tokens[p_tstream.read_idx + 1]
+}
+
 buf_stream_parse_as_tok_stream :: proc(p_bstream: ^BufStream) -> (TokenStream, HL_Stream_Error) {
     r, s := buf_stream_next_char_skipped(p_bstream)
 
@@ -46,6 +54,7 @@ buf_stream_parse_as_tok_stream :: proc(p_bstream: ^BufStream) -> (TokenStream, H
         case '{': append(&tokens, token_mk_single(rune_idx, Token_Type.lbrack))
         case '}': append(&tokens, token_mk_single(rune_idx, Token_Type.rbrack))
         case '=': append(&tokens, token_mk_single(rune_idx, Token_Type.eq))
+        case '#': append(&tokens, token_mk_single(rune_idx, Token_Type.hashtag))
 
         case '\n':
             append(&tokens, token_mk_single(rune_idx, Token_Type.newline))

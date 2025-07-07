@@ -7,17 +7,6 @@ import "core:strings"
 // TODO: rewrite the code to utilize expectation of the next given the token, build from basic
 // instead of doing the same thing over and over again
 
-next_int_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> int {
-    tok_value := tok_stream_next(p_tstream)
-    return str_to_int(buf_stream_string_from_tok(p_bstream, tok_value^))
-}
-
-next_str_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> string {
-    tok_value := tok_stream_next(p_tstream)
-    return buf_stream_string_from_tok(p_bstream, tok_value^)
-}
-
-
 str_to_int :: proc(str: string) -> int {
     result: int = 0
 
@@ -30,35 +19,7 @@ str_to_int :: proc(str: string) -> int {
     return result
 }
 
-translate_add :: proc(p_asm_builder: ^strings.Builder, p_bstream: ^BufStream, p_tstream: ^TokenStream) {
-    p_tok_lhs := tok_stream_next(p_tstream)
-    tok_stream_next(p_tstream)
-    p_tok_rhs := tok_stream_next(p_tstream)
-
-    str_lhs := buf_stream_string_from_tok(p_bstream, p_tok_lhs^)
-    str_rhs := buf_stream_string_from_tok(p_bstream, p_tok_rhs^)
-
-    lhs := str_to_int(str_lhs)
-    rhs := str_to_int(str_rhs)
-
-    fmt.sbprintfln(p_asm_builder, "mov rax, %d", lhs)
-    fmt.sbprintfln(p_asm_builder, "add rax, %d", rhs)
-}
-
-// translate_println :: proc(p_asm_builder: ^strings.Builder, p_bstream: ^BufStream, p_tstream: ^TokenStream, p_static_strings: ^[dynamic]string) {
-    // tok_stream_next(p_tstream) // consume println token
-    // p_tok_msg := tok_stream_next(p_tstream)
-    //
-    // str := buf_stream_string_from_tok(p_bstream, p_tok_msg^)
-    //
-    // msg_content := str[1:len(str) - 1]
-    //
-    // str_idx := len(p_static_strings^)
-    // append(p_static_strings, msg_content)
-    //
-    // fmt.sbprintfln(p_asm_builder, "lea rsi, [__str_%d]\nmov rdx, __str_%d_len\ncall print\n", str_idx, str_idx)
-// }
-
+// AST short hand parsing
 parse_var_declare :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> ASTVarDeclareNode {
     tok_stream_next(p_tstream) // consume var
     tok_id := tok_stream_next(p_tstream)
@@ -82,6 +43,24 @@ parse_var_declare :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> AST
     os.exit(1)
 }
 
+parse_cmd :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> (node: ASTCmdNode) {
+    cmd_str := next_str_from_stream(p_bstream, p_tstream) // consume cmd token
+    
+    tok_str := tok_stream_peek(p_tstream)
+
+    node = ast_node_cmd_make(cmd_str)
+
+    // eat string arguments until unable
+    for tok_str != nil && tok_str.type == .lit_str {
+        tstr := next_str_from_stream(p_bstream, p_tstream)
+        ast_node_cmd_append_arg(&node, ast_node_lit_str_make(tstr))
+
+        tok_str = tok_stream_peek(p_tstream)
+    }
+
+    return
+}
+
 compile_fasm :: proc(asm_path: string) {
     pid, fork_err := os.fork()
 
@@ -99,6 +78,50 @@ compile_fasm :: proc(asm_path: string) {
             return
         }
     }
+}
+
+AST_Parse_Error :: enum {
+    None, Failed,
+}
+
+parse_ast_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> (ASTSeqNode, AST_Parse_Error) {
+    ast_node := ast_node_seq_make()
+
+    is_newline := true
+
+    // TODO: ERROR propagation from parsing
+    p_tok := tok_stream_next(p_tstream)
+    for p_tok != nil {
+
+        #partial switch p_tok.type {
+        case .newline:
+            is_newline = true
+
+        case .sym:
+            str := buf_stream_string_from_tok(p_bstream, p_tok^)
+            
+            if str == "var" {
+                tok_stream_move_back(p_tstream, 1)
+                var_declare_node := parse_var_declare(p_bstream, p_tstream)
+                ast_node_seq_append(&ast_node, var_declare_node)
+                fmt.println("Created variable declaration node -> ", var_declare_node)
+
+            } else if str == "println" {
+                tok_stream_move_back(p_tstream, 1)
+
+                cmd_node := parse_cmd(p_bstream, p_tstream)
+
+                ast_node_seq_append(&ast_node, cmd_node)
+                fmt.println("Created CMD Node -> ", cmd_node)
+            }
+
+        }
+
+        p_tok = tok_stream_next(p_tstream)
+        is_newline = false
+    }
+
+    return ast_node, .None
 }
 
 
@@ -124,58 +147,23 @@ main :: proc() {
 
 
     // LEXICATION
-    tstream, parse_err := buf_stream_parse_as_tok_stream(&bstream)
+    tstream, tok_stream_err := buf_stream_parse_as_tok_stream(&bstream)
     defer tok_stream_destroy(tstream)
 
-    if parse_err != .None {
-        fmt.eprintln("Error parsing code:", parse_err)
+    if tok_stream_err != .None {
+        fmt.eprintln("Error parsing code:", tok_stream_err)
         os.exit(1)
     }
 
-    ast_node := ast_node_seq_make()
-
     // convert to AST grammatical analysis
     fmt.println("Converting to Abstract syntax tree...")
-    p_tok := tok_stream_next(&tstream)
 
-    is_newline := true
-
-    for p_tok != nil {
-
-        #partial switch p_tok.type {
-        case .newline:
-            is_newline = true
-
-        case .sym:
-            str := buf_stream_string_from_tok(&bstream, p_tok^)
-            
-            if str == "var" {
-                tok_stream_move_back(&tstream, 1)
-                var_declare_node := parse_var_declare(&bstream, &tstream)
-                ast_node_seq_append(&ast_node, var_declare_node)
-                fmt.println("Created variable declaration node -> ", var_declare_node)
-            }
-
-            if str == "println" {
-                tok_stream_move_back(&tstream, 1)
-                tok_stream_next(&tstream) // consume println token
-
-                p_tok_msg := tok_stream_next(&tstream)
-                tstr := buf_stream_string_from_tok(&bstream, p_tok_msg^)
-
-                cmd_node := ast_node_cmd_make("println")
-                ast_node_cmd_append_arg(&cmd_node, ast_node_lit_str_make(tstr))
-
-                ast_node_seq_append(&ast_node, cmd_node)
-                fmt.println("Created CMD Node -> cmd:", cmd_node.cmd, ", args:", cmd_node.args)
-            }
-
-        }
-
-        p_tok = tok_stream_next(&tstream)
-        is_newline = false
+    ast_node, ast_err := parse_ast_from_stream(&bstream, &tstream)
+    if ast_err != .None {
+        fmt.eprintln("Cannot parse AST from token stream:", ast_err)
+        os.exit(1)
     }
-
+    // else
 
     // === TRANSLATION FROM AST TO ASM === //
     alloc_static_strings: [dynamic]string
@@ -226,6 +214,8 @@ main :: proc() {
 
     fmt.println("Translation Complete!")
 
+
+    // ASM COMPILATION
     tmp_asm_path := strings.concatenate({os.args[2], ".asm"})
     defer delete(tmp_asm_path)
     fmt.printfln("Writing to %s...", tmp_asm_path)
