@@ -61,25 +61,6 @@ parse_cmd :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> (node: ASTC
     return
 }
 
-compile_fasm :: proc(asm_path: string) {
-    pid, fork_err := os.fork()
-
-    if fork_err != nil {
-        fmt.eprintln("Error forking:", fork_err)
-        return
-    }
-    // else
-
-    if pid == 0 {
-        // child process
-        exec_err := os.execvp("fasm", {asm_path})
-        if exec_err != nil {
-            fmt.eprintln("Error executing fasm:", exec_err)
-            return
-        }
-    }
-}
-
 AST_Parse_Error :: enum {
     None, Failed,
 }
@@ -165,57 +146,14 @@ main :: proc() {
     }
     // else
 
-    // === TRANSLATION FROM AST TO ASM === //
-    alloc_static_strings: [dynamic]string
-    defer delete(alloc_static_strings)
+    ctarget : CompilationTarget = LINUX_FASM_X86_64_COMPILATION_TARGET
 
-    // start printing basic content
+    // start writing assembly
     asm_builder := strings.builder_make()
 
-    fmt.println("Translating from Abstract syntax tree...")
+    ctarget.asm_construct_proc(ast_node, &asm_builder)
 
-    // ELF64 x86_64 linux header
-    fmt.sbprintln(&asm_builder, "format ELF64 executable 3\nsegment readable executable\nentry main\n")
-
-    // useful print
-    fmt.sbprintln(&asm_builder, "print:\npush rax\npush rdi\nmov rax, 1\nmov rdi, 1\nsyscall\npop rdi\npop rax\nret\n")
-
-    // MAIN BEGIN
-    fmt.sbprintln(&asm_builder, "main:")
-
-    for node in ast_node.sequence {
-        #partial switch snode in node {
-        case ASTCmdNode:
-            str := snode.args[0].value
-
-            msg_content := str[1:len(str) - 1]
-
-            str_idx := len(alloc_static_strings)
-            append(&alloc_static_strings, msg_content)
-            fmt.sbprintfln(&asm_builder, "lea rsi, [__str_%d]\nmov rdx, __str_%d_len\ncall print\n", str_idx, str_idx)
-            
-        }
-    }
-
-    // MAIN END
-    fmt.sbprintfln(&asm_builder, "xor rdi, rdi\nmov rax, 60\nsyscall")
-
-    // Define strings
-
-    if len(alloc_static_strings) > 0 {
-        fmt.sbprintln(&asm_builder, "\nsegment readable writable")
-
-        for i in 0..<len(alloc_static_strings) {
-            str := alloc_static_strings[i]
-            fmt.sbprintfln(&asm_builder, "__str_%d: db \"%s\", 10, 0", i, str)
-            fmt.sbprintfln(&asm_builder, "__str_%d_len = $-__str_%d", i, i)
-        }
-    }
-
-    fmt.println("Translation Complete!")
-
-
-    // ASM COMPILATION
+    // writing to file for compilation
     tmp_asm_path := strings.concatenate({os.args[2], ".asm"})
     defer delete(tmp_asm_path)
     fmt.printfln("Writing to %s...", tmp_asm_path)
@@ -229,8 +167,5 @@ main :: proc() {
 
     fmt.printfln("Writing to %s complete.", tmp_asm_path)
 
-    fmt.println("Compiling using fasm...")
-
-    // start compilation for fasm
-    compile_fasm(tmp_asm_path)
+    ctarget.asm_compile_proc(tmp_asm_path)
 }
