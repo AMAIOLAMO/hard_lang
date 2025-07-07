@@ -1,0 +1,13 @@
+value_here = 15 + (2 + 1 * 3)
+
+println `This is some cool commands here {value_here}`
+os_run `steam` or println `Failed to run steam!`
+os_run `grep -e "I love hard lang!"` and println `found something!`
+
+if value_here == 20 then
+  println `Good job!`
+else
+  println `ahh kinda not exactly 20, but that's okay!`
+end
+
+
