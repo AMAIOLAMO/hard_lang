@@ -1,7 +1,7 @@
 package hl
 
 Token_Type :: enum {
-    grave, lparen, rparen, lbrack, rbrack, // symbols (): [paren]thesis, {}: [brack]ets
+    eq, grave, lparen, rparen, lbrack, rbrack, // symbols (): [paren]thesis, {}: [brack]ets
     add, sub, mul, div, // operations
     lit_int, lit_str, // literals
     sym, newline, unknown, none,

@@ -1,4 +1,6 @@
+var test = 50
+var love = `20`
 println `Hello World!`
 println `Cool stuff!`
-println `I love you this works!` println `this also works!`
+println `I love you this works!`
 println `nice`

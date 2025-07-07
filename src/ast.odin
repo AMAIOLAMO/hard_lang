@@ -1,5 +1,26 @@
 package hl
 
+ASTVarDeclareNode :: struct {
+    id: string,
+    value: ASTExprNode,
+}
+
+ast_node_var_declare_make :: proc(id: string, value: ASTExprNode) -> ASTVarDeclareNode {
+    return {
+        id = id,
+        value = value,
+    }
+}
+
+ASTLiteralIntNode :: struct {
+    value: int,
+}
+
+ast_node_lit_int_make :: proc(value: int) -> ASTLiteralIntNode {
+    return { value = value }
+}
+
+
 ASTLiteralStrNode :: struct {
     value: string,
 }
@@ -62,12 +83,17 @@ ast_node_seq_append :: proc(p_node: ^ASTSeqNode, append_node: ASTNode) {
 
 ASTExprNode :: union {
     ASTLiteralStrNode,
+    ASTLiteralIntNode,
 }
 
 ASTNode :: union {
     ASTSeqNode,
-    ASTLiteralStrNode,
     ASTCmdNode,
+
+    ASTVarDeclareNode,
+
+    ASTLiteralStrNode,
+    ASTLiteralIntNode,
     // ASTOpNode,
 }
 

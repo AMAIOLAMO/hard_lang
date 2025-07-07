@@ -4,6 +4,20 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
+// TODO: rewrite the code to utilize expectation of the next given the token, build from basic
+// instead of doing the same thing over and over again
+
+next_int_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> int {
+    tok_value := tok_stream_next(p_tstream)
+    return str_to_int(buf_stream_string_from_tok(p_bstream, tok_value^))
+}
+
+next_str_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> string {
+    tok_value := tok_stream_next(p_tstream)
+    return buf_stream_string_from_tok(p_bstream, tok_value^)
+}
+
+
 str_to_int :: proc(str: string) -> int {
     result: int = 0
 
@@ -44,6 +58,49 @@ translate_add :: proc(p_asm_builder: ^strings.Builder, p_bstream: ^BufStream, p_
     //
     // fmt.sbprintfln(p_asm_builder, "lea rsi, [__str_%d]\nmov rdx, __str_%d_len\ncall print\n", str_idx, str_idx)
 // }
+
+parse_var_declare :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> ASTVarDeclareNode {
+    tok_stream_next(p_tstream) // consume var
+    tok_id := tok_stream_next(p_tstream)
+    str := buf_stream_string_from_tok(p_bstream, tok_id^)
+
+    tok_stream_next(p_tstream)
+    tok_value := tok_stream_next(p_tstream)
+
+    #partial switch tok_value.type {
+    case .lit_int:
+        v := str_to_int(buf_stream_string_from_tok(p_bstream, tok_value^))
+        return ASTVarDeclareNode{id = str, value = ast_node_lit_int_make(v)}
+
+    case .lit_str:
+        v := buf_stream_string_from_tok(p_bstream, tok_value^)
+        return ASTVarDeclareNode{id = str, value = ast_node_lit_str_make(v[1:len(v) - 1])}
+    }
+    // else
+
+    fmt.eprintln("Cannot parse variable declaration, unknown rvalue")
+    os.exit(1)
+}
+
+compile_fasm :: proc(asm_path: string) {
+    pid, fork_err := os.fork()
+
+    if fork_err != nil {
+        fmt.eprintln("Error forking:", fork_err)
+        return
+    }
+    // else
+
+    if pid == 0 {
+        // child process
+        exec_err := os.execvp("fasm", {asm_path})
+        if exec_err != nil {
+            fmt.eprintln("Error executing fasm:", exec_err)
+            return
+        }
+    }
+}
+
 
 main :: proc() {
     if len(os.args) != 2 + 1 {
@@ -88,12 +145,16 @@ main :: proc() {
         #partial switch p_tok.type {
         case .newline:
             is_newline = true
-        // case .add:
-        //     tok_stream_move_back(&tstream, 2) // revert + and lhs
-        //
-        //     translate_add(&asm_builder, &bstream, &tstream)
+
         case .sym:
             str := buf_stream_string_from_tok(&bstream, p_tok^)
+            
+            if str == "var" {
+                tok_stream_move_back(&tstream, 1)
+                var_declare_node := parse_var_declare(&bstream, &tstream)
+                ast_node_seq_append(&ast_node, var_declare_node)
+                fmt.println("Created variable declaration node -> ", var_declare_node)
+            }
 
             if str == "println" {
                 tok_stream_move_back(&tstream, 1)
@@ -107,40 +168,6 @@ main :: proc() {
 
                 ast_node_seq_append(&ast_node, cmd_node)
                 fmt.println("Created CMD Node -> cmd:", cmd_node.cmd, ", args:", cmd_node.args)
-
-            //
-            //     tok_stream_next(&tstream) // consume println token
-            //     p_tok_msg := tok_stream_next(&tstream)
-            //
-            //     p_node := ast_node_make(type = .cmd, parent = p_ast)
-            //
-            //     args := make([dynamic]Token)
-            //
-            //     append(&args, p_tok_msg^)
-            //
-            //     p_node.data = ASTNodeCmdData{ p_tok^, args }
-            //     #partial switch v in p_ast.data {
-            //     case ASTNodeSequenceData:
-            //         seq := v.sequence
-            //         append(&seq, p_node)
-            //     }
-
-                // tstr := buf_stream_string_from_tok(&bstream, p_tok_msg^)
-                //
-                // msg_content := tstr[1:len(tstr) - 1]
-
-                // p_node.type = .cmd
-                // p_node.data = ASTNodeCmdData{ p_tok^, args[:] }
-                // p_node.parent = &ast
-                // p_node.children = make([dynamic]^ASTNode)
-                //
-                // append(&ast.children, p_node)
-
-                // str_idx := len(p_static_strings^)
-                // append(p_static_strings, msg_content)
-                //
-                // fmt.sbprintfln(p_asm_builder, "lea rsi, [__str_%d]\nmov rdx, __str_%d_len\ncall print\n", str_idx, str_idx)
-                // translate_println(&asm_builder, &bstream, &tstream, &alloc_static_strings)
             }
 
         }
@@ -215,21 +242,5 @@ main :: proc() {
     fmt.println("Compiling using fasm...")
 
     // start compilation for fasm
-    pid, fork_err := os.fork()
-
-    if fork_err != nil {
-        fmt.eprintln("Error forking:", fork_err)
-        return
-    }
-    // else
-
-    if pid == 0 {
-        // child process
-        exec_err := os.execvp("fasm", {tmp_asm_path})
-        if exec_err != nil {
-            fmt.eprintln("Error executing fasm:", exec_err)
-            return
-        }
-    }
-
+    compile_fasm(tmp_asm_path)
 }

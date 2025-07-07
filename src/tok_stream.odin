@@ -45,6 +45,7 @@ buf_stream_parse_as_tok_stream :: proc(p_bstream: ^BufStream) -> (TokenStream, H
         case ')': append(&tokens, token_mk_single(rune_idx, Token_Type.rparen))
         case '{': append(&tokens, token_mk_single(rune_idx, Token_Type.lbrack))
         case '}': append(&tokens, token_mk_single(rune_idx, Token_Type.rbrack))
+        case '=': append(&tokens, token_mk_single(rune_idx, Token_Type.eq))
 
         case '\n':
             append(&tokens, token_mk_single(rune_idx, Token_Type.newline))
