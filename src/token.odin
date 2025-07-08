@@ -1,7 +1,7 @@
 package hl
 
 Token_Type :: enum {
-    hashtag, eq, grave,
+    comma, hashtag, eq, grave,
     lparen, rparen, lbrack, rbrack, // symbols (): [paren]thesis, {}: [brack]ets
     add, sub, mul, div, // operations
     lit_int, lit_str, // literals
@@ -12,7 +12,7 @@ Token_Type :: enum {
 // expression: command [arguments] [("or" | "and") action]
 // var_name "=" expression
 // EXAMPLE: 
-// value_here = 15 + (2 + 1 * 3)
+// var value_here = 15 + (2 + 1 * 3)
 // println `This is some cool commands here {value_here}`
 // os_run `steam` or println `Failed to run steam!`
 // os_run `grep -e "I love hard lang!"` and println `found something!`

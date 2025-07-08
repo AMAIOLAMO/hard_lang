@@ -25,6 +25,12 @@ tok_stream_next :: proc(p_tstream: ^TokenStream) -> ^Token {
     return &p_tstream.tokens[p_tstream.read_idx]
 }
 
+tok_stream_peek_expect :: proc(p_tstream: ^TokenStream, type: Token_Type) -> (p_tok: ^Token, success: bool) {
+    p_tok = tok_stream_peek(p_tstream)
+    success = p_tok != nil && p_tok.type == type
+    return
+}
+
 tok_stream_peek :: proc(p_tstream: ^TokenStream) -> ^Token {
     if (p_tstream.read_idx + 1) >= len(p_tstream.tokens) {
         return nil
@@ -45,29 +51,32 @@ buf_stream_parse_as_tok_stream :: proc(p_bstream: ^BufStream) -> (TokenStream, H
         rune_idx := buf_stream_get_read_idx(p_bstream)
 
         switch r {
-        case '+': append(&tokens, token_mk_single(rune_idx, Token_Type.add))
-        case '-': append(&tokens, token_mk_single(rune_idx, Token_Type.sub))
-        case '*': append(&tokens, token_mk_single(rune_idx, Token_Type.mul))
-        case '/': append(&tokens, token_mk_single(rune_idx, Token_Type.div))
-        case '(': append(&tokens, token_mk_single(rune_idx, Token_Type.lparen))
-        case ')': append(&tokens, token_mk_single(rune_idx, Token_Type.rparen))
-        case '{': append(&tokens, token_mk_single(rune_idx, Token_Type.lbrack))
-        case '}': append(&tokens, token_mk_single(rune_idx, Token_Type.rbrack))
-        case '=': append(&tokens, token_mk_single(rune_idx, Token_Type.eq))
-        case '#': append(&tokens, token_mk_single(rune_idx, Token_Type.hashtag))
+        case '+': append(&tokens, token_mk_single(rune_idx, .add))
+        case '-': append(&tokens, token_mk_single(rune_idx, .sub))
+        case '*': append(&tokens, token_mk_single(rune_idx, .mul))
+        case '/': append(&tokens, token_mk_single(rune_idx, .div))
+        case '(': append(&tokens, token_mk_single(rune_idx, .lparen))
+        case ')': append(&tokens, token_mk_single(rune_idx, .rparen))
+        case '{': append(&tokens, token_mk_single(rune_idx, .lbrack))
+        case '}': append(&tokens, token_mk_single(rune_idx, .rbrack))
+        case '=': append(&tokens, token_mk_single(rune_idx, .eq))
+        case '#': append(&tokens, token_mk_single(rune_idx, .hashtag))
+        case ',': append(&tokens, token_mk_single(rune_idx, .comma))
 
         case '\n':
-            append(&tokens, token_mk_single(rune_idx, Token_Type.newline))
+            append(&tokens, token_mk_single(rune_idx, .newline))
             line += 1
 
         case '`':
             buf_stream_move_back(p_bstream)
             tok, ss := buf_stream_try_parse_string(p_bstream)
-            if ss {
-                append(&tokens, tok)
-            } else {
+
+            if ss == false {
                 return TokenStream{}, .Parse_Failed
             }
+            // else
+
+            append(&tokens, tok)
 
         case:
             if rune_is_digit(r) {
@@ -79,7 +88,7 @@ buf_stream_parse_as_tok_stream :: proc(p_bstream: ^BufStream) -> (TokenStream, H
                 append(&tokens, buf_stream_parse_symbol(p_bstream))
 
             } else {
-                append(&tokens, Token{ rune_idx, rune_idx, Token_Type.unknown })
+                append(&tokens, token_mk_single(rune_idx, .unknown))
             }
         }
 

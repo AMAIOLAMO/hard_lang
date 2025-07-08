@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
+HL_VERSION_STR :: "v0.0.0"
+
 // TODO: rewrite the code to utilize expectation of the next given the token, build from basic
 // instead of doing the same thing over and over again
 
@@ -46,16 +48,18 @@ parse_var_declare :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> AST
 parse_cmd :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) -> (node: ASTCmdNode) {
     cmd_str := next_str_from_stream(p_bstream, p_tstream) // consume cmd token
     
-    tok_str := tok_stream_peek(p_tstream)
-
     node = ast_node_cmd_make(cmd_str)
 
     // eat string arguments until unable
-    for tok_str != nil && tok_str.type == .lit_str {
+    for {
+        _, success := tok_stream_peek_expect(p_tstream, .lit_str)
+        if success == false {
+            break
+        }
+        // else consume
+
         tstr := next_str_from_stream(p_bstream, p_tstream)
         ast_node_cmd_append_arg(&node, ast_node_lit_str_make(tstr))
-
-        tok_str = tok_stream_peek(p_tstream)
     }
 
     return
@@ -79,17 +83,26 @@ parse_ast_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) ->
             is_newline = true
 
         case .sym:
+            if is_newline == false {
+                // some other symbol that is not a variable declaration or symbolic call
+                return ast_node, .Failed
+            }
+            // else, on a start of newline
+
             str := buf_stream_string_from_tok(p_bstream, p_tok^)
-            
-            if str == "var" {
+
+            switch str {
+            case "var":
                 tok_stream_move_back(p_tstream, 1)
                 var_declare_node := parse_var_declare(p_bstream, p_tstream)
                 ast_node_seq_append(&ast_node, var_declare_node)
                 fmt.println("Created variable declaration node -> ", var_declare_node)
 
-            } else if str == "println" {
-                tok_stream_move_back(p_tstream, 1)
+            case "if":
+                fmt.println("Reserved if keyword found, but is not implemented yet")
 
+            case:
+                tok_stream_move_back(p_tstream, 1)
                 cmd_node := parse_cmd(p_bstream, p_tstream)
 
                 ast_node_seq_append(&ast_node, cmd_node)
@@ -99,7 +112,6 @@ parse_ast_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) ->
         }
 
         p_tok = tok_stream_next(p_tstream)
-        is_newline = false
     }
 
     return ast_node, .None
@@ -108,7 +120,7 @@ parse_ast_from_stream :: proc(p_bstream: ^BufStream, p_tstream: ^TokenStream) ->
 
 main :: proc() {
     if len(os.args) != 2 + 1 {
-        fmt.println("Hard lang compiler v0.0.0")
+        fmt.printfln("Hard lang compiler %s", HL_VERSION_STR)
         fmt.println("An extremely simple language that is written just for fun!")
 
         fmt.println()
@@ -117,6 +129,8 @@ main :: proc() {
         fmt.printfln("%s <input file> <output file>", os.args[0])
         return
     }
+
+    fmt.printfln("Using Hard lang compiler %s", HL_VERSION_STR)
 
     bstream, read_err := buf_stream_read_from_file(os.args[1])
     defer buf_stream_destroy(bstream)
